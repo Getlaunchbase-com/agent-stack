@@ -22,31 +22,36 @@ def _exec_py(workspace: str, code: str):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+import textwrap
+
 def _playwright_script(workspace: str, session: str, action_py: str):
     ws = _ws(workspace)
-    # session dir under workspace for persistence
+
+    # indent the injected action so it sits inside the `with` block
+    action_py = (action_py or "").strip("\n")
+    indented_action = textwrap.indent(action_py, "    ").rstrip()
+
     return textwrap.dedent(f"""
-    import os
-    from playwright.sync_api import sync_playwright
+import os
+from playwright.sync_api import sync_playwright
 
-    ws = r"{ws}"
-    session = {session!r}
-    os.makedirs(os.path.join(ws, ".browser", session), exist_ok=True)
-    user_data_dir = os.path.join(ws, ".browser", session, "user_data")
+ws = r"{ws}"
+session = {session!r}
+os.makedirs(os.path.join(ws, ".browser", session), exist_ok=True)
+user_data_dir = os.path.join(ws, ".browser", session, "user_data")
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch_persistent_context(
-            user_data_dir,
-            headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox"]
-        )
-        page = browser.pages[0] if browser.pages else browser.new_page()
-        
-        {action_py}
-        
-        browser.close()
-    """)
+with sync_playwright() as p:
+    browser = p.chromium.launch_persistent_context(
+        user_data_dir,
+        headless=True,
+        args=["--no-sandbox", "--disable-setuid-sandbox"]
+    )
+    page = browser.pages[0] if browser.pages else browser.new_page()
 
+{indented_action}
+
+    browser.close()
+""").strip() + "\n"
 def browser_goto(workspace: str, url: str, session: str = "default"):
     action = f"""
 page.goto({url!r}, wait_until="domcontentloaded", timeout=60000)

@@ -1,9 +1,9 @@
-FROM mcr.microsoft.com/playwright/python:v1.44.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.57.0-jammy
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-RUN pip install --no-cache-dir fastapi uvicorn pydantic python-dotenv
+RUN python -m pip install --no-cache-dir fastapi uvicorn pydantic python-dotenv playwright==1.57.0
 
 WORKDIR /app
 COPY . /app

@@ -1,8 +1,9 @@
+version: "3.9"
+
 services:
   router:
     build: ./router
     container_name: agent-router
-    env_file: .env
     environment:
       - WORKSPACE_ROOT=${WORKSPACE_ROOT}
     ports:
@@ -10,6 +11,7 @@ services:
     volumes:
       - workspaces:${WORKSPACE_ROOT}
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
     depends_on:
       - runner
       - browser
@@ -18,7 +20,6 @@ services:
   runner:
     build: ./runner
     container_name: agent-runner
-    # no ports needed; router talks via docker exec OR HTTP if you add it later
     volumes:
       - workspaces:${WORKSPACE_ROOT}
     working_dir: ${WORKSPACE_ROOT}
@@ -32,10 +33,12 @@ services:
       - BROWSER_ALLOWED_DOMAINS=${BROWSER_ALLOWED_DOMAINS}
     volumes:
       - workspaces:${WORKSPACE_ROOT}
-    # optional: expose for debugging
     ports:
       - "9222:9222"
+    depends_on:
+      - runner
     restart: unless-stopped
+    command: ["bash", "-lc", "mkdir -p /workspaces/default && exec sleep infinity"]
 
 volumes:
   workspaces:
