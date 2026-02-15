@@ -8,27 +8,58 @@ They are staged here because this session only has push access to agent-stack.
 ### 1. Copy new files into launchbase-platform
 
 ```bash
-# From the launchbase-platform repo root:
-cp server/middleware/rateLimiter.ts     <launchbase-platform>/server/middleware/rateLimiter.ts
-cp server/auth/verifyProjectAccess.ts   <launchbase-platform>/server/auth/verifyProjectAccess.ts
-cp server/routes/artifactsRouter.ts     <launchbase-platform>/server/routes/artifactsRouter.ts
-cp server/routers/admin/operatorOS.ts   <launchbase-platform>/server/routers/admin/operatorOS.ts
+# From the agent-stack repo root:
+LP=<path-to-launchbase-platform>
+
+mkdir -p "$LP/server/middleware"
+mkdir -p "$LP/server/auth"
+mkdir -p "$LP/server/routes"
+mkdir -p "$LP/server/routers/admin"
+
+cp launchbase-platform-security/server/middleware/rateLimiter.ts     "$LP/server/middleware/rateLimiter.ts"
+cp launchbase-platform-security/server/auth/verifyProjectAccess.ts   "$LP/server/auth/verifyProjectAccess.ts"
+cp launchbase-platform-security/server/routes/artifactsRouter.ts     "$LP/server/routes/artifactsRouter.ts"
+cp launchbase-platform-security/server/routers/admin/operatorOS.ts   "$LP/server/routers/admin/operatorOS.ts"
 ```
 
 ### 2. Apply patches to existing files
 
 ```bash
-cd <launchbase-platform>
-git apply launchbase-platform-security/server/db/schema.patch
-git apply launchbase-platform-security/server/routers/incoming_routers.patch
+cd "$LP"
+git apply <path-to-agent-stack>/launchbase-platform-security/server/db/schema.patch
+git apply <path-to-agent-stack>/launchbase-platform-security/server/routers/incoming_routers.patch
 ```
 
-### 3. Run migration
+**What the patches do:**
+- `schema.patch`: Adds `projectId` column + index to `agentRuns`, adds `agentArtifacts`, `projects`, and `projectCollaborators` tables
+- `incoming_routers.patch`: Imports and mounts `operatorOSRouter` in the tRPC app router
+
+### 3. Wire artifact router into Express app
+
+```typescript
+// In server/_core/index.ts (or wherever Express app is configured):
+import { artifactsRouter } from "../routes/artifactsRouter";
+import { downloadRateLimit } from "../middleware/rateLimiter";
+
+app.use("/api/artifacts", downloadRateLimit, artifactsRouter);
+```
+
+### 4. Run migration
 
 ```bash
 pnpm db:push
 ```
 
-### 4. Delete this directory from agent-stack after applying
+### 5. Install optional dependencies
+
+```bash
+# Redis-backed rate limiting (optional, falls back to in-memory):
+npm install ioredis
+
+# S3 artifact storage (if using S3):
+npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+```
+
+### 6. Delete this directory from agent-stack after applying
 
 These files should not live in agent-stack permanently.
