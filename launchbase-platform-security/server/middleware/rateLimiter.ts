@@ -1,20 +1,22 @@
 /**
  * Rate Limiter Middleware
  *
- * Production-safe rate limiting with Redis support + in-memory fallback
+ * Production-safe rate limiting with Redis support + in-memory fallback.
  *
  * FEATURES:
  * - Fixed window (simple, performant)
  * - Redis-backed if REDIS_URL set
  * - In-memory fallback if Redis unavailable
  * - Per-user rate limiting (falls back to IP for unauthenticated)
- * - Standard rate limit headers
+ * - Standard rate limit headers (X-RateLimit-Limit, -Remaining, -Reset)
  * - Configurable per endpoint
  *
  * Usage:
+ *   import { downloadRateLimit } from "../middleware/rateLimiter";
  *   app.get('/api/artifacts/:id', downloadRateLimit, handler);
  *
- *   // Or in tRPC procedure:
+ *   // Or direct check in tRPC procedure:
+ *   import { checkRateLimit } from "../../middleware/rateLimiter";
  *   const info = await checkRateLimit(key, { max: 60, windowSec: 60 });
  *   if (!info.allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
  */
@@ -73,23 +75,27 @@ async function getRedis() {
 }
 
 /**
- * Check rate limit for a key
+ * Check rate limit for a key.
  *
  * @param key - Unique identifier (e.g., "rl:downloads:user:123")
- * @param opts - Rate limit configuration
+ * @param opts - { max, windowSec }
  * @returns Rate limit info
  */
 export async function checkRateLimit(
   key: string,
   opts: LimitOptions
-): Promise<{ allowed: boolean; current: number; limit: number; resetAtMs: number }> {
+): Promise<{
+  allowed: boolean;
+  current: number;
+  limit: number;
+  resetAtMs: number;
+}> {
   const now = Date.now();
   const windowMs = opts.windowSec * 1000;
 
   const r = await getRedis();
   if (r) {
     try {
-      // Use Redis fixed window with TTL
       const tx = r.multi();
       tx.incr(key);
       tx.ttl(key);
@@ -100,22 +106,16 @@ export async function checkRateLimit(
       const count = Number(results[0][1] || 0);
       const ttl = Number(results[1][1] || -1);
 
-      // Set expiry on first increment
       if (ttl === -1) {
         await r.expire(key, opts.windowSec);
       }
 
-      const resetAtMs = now + Math.max(0, (ttl > 0 ? ttl : opts.windowSec) * 1000);
+      const resetAtMs =
+        now + Math.max(0, (ttl > 0 ? ttl : opts.windowSec) * 1000);
 
-      return {
-        allowed: count <= opts.max,
-        current: count,
-        limit: opts.max,
-        resetAtMs,
-      };
+      return { allowed: count <= opts.max, current: count, limit: opts.max, resetAtMs };
     } catch (error) {
       console.error("[RateLimiter] Redis error, falling back to memory:", error);
-      // Fall through to in-memory
     }
   }
 
@@ -137,18 +137,18 @@ export async function checkRateLimit(
 }
 
 /**
- * Generate rate limit key from request
+ * Generate rate limit key from request.
  */
 function getClientKey(req: Request, userId?: string | number): string {
-  // Prefer authenticated user ID; fallback to IP
-  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
-    || req.socket.remoteAddress
-    || "unknown";
+  const ip =
+    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+    req.socket.remoteAddress ||
+    "unknown";
   return userId ? `u:${userId}` : `ip:${ip}`;
 }
 
 /**
- * Create Express middleware for rate limiting
+ * Create Express middleware for rate limiting.
  */
 export function makeRateLimitMiddleware(opts: LimitOptions, keyPrefix: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -158,7 +158,6 @@ export function makeRateLimitMiddleware(opts: LimitOptions, keyPrefix: string) {
     try {
       const info = await checkRateLimit(key, opts);
 
-      // Set standard rate limit headers
       res.setHeader("X-RateLimit-Limit", String(info.limit));
       res.setHeader("X-RateLimit-Remaining", String(Math.max(0, info.limit - info.current)));
       res.setHeader("X-RateLimit-Reset", String(Math.floor(info.resetAtMs / 1000)));
@@ -166,57 +165,41 @@ export function makeRateLimitMiddleware(opts: LimitOptions, keyPrefix: string) {
       if (!info.allowed) {
         const retryAfter = Math.ceil((info.resetAtMs - Date.now()) / 1000);
         res.setHeader("Retry-After", String(retryAfter));
-
-        console.warn(`[RateLimiter] Rate limit exceeded: key=${key} current=${info.current} limit=${info.limit}`);
-
-        return res.status(429).json({
-          error: "Rate limit exceeded. Please slow down.",
-          retryAfter,
-        });
+        console.warn(
+          `[RateLimiter] Rate limit exceeded: key=${key} current=${info.current} limit=${info.limit}`
+        );
+        return res.status(429).json({ error: "Rate limit exceeded. Please slow down.", retryAfter });
       }
 
       next();
     } catch (error) {
       console.error("[RateLimiter] Error:", error);
-      // Fail open — allow request on error
-      next();
+      next(); // Fail open
     }
   };
 }
 
 // ─── Preset Configurations ────────────────────────────────────────────────────
 
-/**
- * Download rate limit for artifacts
- * 60 downloads per minute
- */
+/** 60 downloads per minute */
 export const downloadRateLimit = makeRateLimitMiddleware(
   { max: 60, windowSec: 60 },
   "rl:artifact_download"
 );
 
-/**
- * Polling rate limit for getLiveState
- * 90 requests per minute (1.5 per second, allows burst)
- */
+/** 90 requests per minute (1.5/s, allows burst) */
 export const pollingRateLimit = makeRateLimitMiddleware(
   { max: 90, windowSec: 60 },
   "rl:live_poll"
 );
 
-/**
- * Standard API rate limit
- * 120 requests per minute
- */
+/** 120 requests per minute */
 export const standardRateLimit = makeRateLimitMiddleware(
   { max: 120, windowSec: 60 },
   "rl:api"
 );
 
-/**
- * Strict rate limit for expensive operations
- * 10 requests per minute
- */
+/** 10 requests per minute (expensive operations) */
 export const strictRateLimit = makeRateLimitMiddleware(
   { max: 10, windowSec: 60 },
   "rl:strict"

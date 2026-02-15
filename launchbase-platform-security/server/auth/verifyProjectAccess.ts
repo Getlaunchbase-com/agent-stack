@@ -3,26 +3,22 @@
  *
  * SECURITY MODEL:
  * - Project owner (createdBy) has full access
- * - Project collaborators have read access
+ * - Active collaborators have read access
  * - Admin role has access to all projects
  * - All other users denied
  * - Fails closed: deny on any error
  *
- * Usage:
- *   const hasAccess = await verifyProjectAccess(userId, projectId);
- *   if (!hasAccess) throw new TRPCError({ code: "FORBIDDEN" });
+ * Import paths follow launchbase-platform conventions:
+ *   getDb        → ../db   (server/db module)
+ *   schema tables → ../drizzle/schema
  */
 
 import { getDb } from "../db";
-import { users, projects, projectCollaborators } from "../../drizzle/schema";
+import { users, projects, projectCollaborators } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 
 /**
- * Verify user has access to project (read-level)
- *
- * @param userId - User ID from ctx.user.id
- * @param projectId - Project ID to check access for
- * @returns true if user has access, false otherwise
+ * Verify user has read-level access to a project.
  */
 export async function verifyProjectAccess(
   userId: number,
@@ -35,7 +31,6 @@ export async function verifyProjectAccess(
   }
 
   try {
-    // Get user role
     const [user] = await db
       .select({ role: users.role })
       .from(users)
@@ -47,12 +42,10 @@ export async function verifyProjectAccess(
       return false;
     }
 
-    // Admins have access to all projects
     if (user.role === "admin") {
       return true;
     }
 
-    // Check project exists and user is owner
     const [project] = await db
       .select({ createdBy: projects.createdBy })
       .from(projects)
@@ -64,12 +57,10 @@ export async function verifyProjectAccess(
       return false;
     }
 
-    // User is project owner
     if (project.createdBy === userId) {
       return true;
     }
 
-    // Check collaborators table
     const [collaborator] = await db
       .select({ userId: projectCollaborators.userId })
       .from(projectCollaborators)
@@ -86,23 +77,18 @@ export async function verifyProjectAccess(
       return true;
     }
 
-    // Deny access — no ownership or collaboration found
     console.warn(
-      `[verifyProjectAccess] Access denied: user=${userId} project=${projectId} (no ownership or collaboration)`
+      `[verifyProjectAccess] Access denied: user=${userId} project=${projectId}`
     );
     return false;
   } catch (error) {
     console.error(`[verifyProjectAccess] Error:`, error);
-    return false; // Fail closed — deny on error
+    return false; // Fail closed
   }
 }
 
 /**
- * Verify user owns a project (stricter than read access)
- *
- * @param userId - User ID
- * @param projectId - Project ID
- * @returns true if user is project owner or admin
+ * Verify user owns a project (stricter than read access).
  */
 export async function verifyProjectOwnership(
   userId: number,
@@ -112,7 +98,6 @@ export async function verifyProjectOwnership(
   if (!db) return false;
 
   try {
-    // Get user role
     const [user] = await db
       .select({ role: users.role })
       .from(users)
@@ -120,13 +105,8 @@ export async function verifyProjectOwnership(
       .limit(1);
 
     if (!user) return false;
+    if (user.role === "admin") return true;
 
-    // Admins have ownership rights on all projects
-    if (user.role === "admin") {
-      return true;
-    }
-
-    // Check direct ownership
     const [project] = await db
       .select({ createdBy: projects.createdBy })
       .from(projects)
@@ -141,10 +121,7 @@ export async function verifyProjectOwnership(
 }
 
 /**
- * Get all projects user has access to
- *
- * @param userId - User ID
- * @returns Array of project IDs
+ * Get all project IDs a user has access to.
  */
 export async function getUserProjects(userId: number): Promise<string[]> {
   const db = await getDb();
@@ -159,21 +136,16 @@ export async function getUserProjects(userId: number): Promise<string[]> {
 
     if (!user) return [];
 
-    // Admins see all projects
     if (user.role === "admin") {
-      const allProjects = await db
-        .select({ id: projects.id })
-        .from(projects);
+      const allProjects = await db.select({ id: projects.id }).from(projects);
       return allProjects.map((p) => p.id);
     }
 
-    // Get owned projects
     const ownedProjects = await db
       .select({ id: projects.id })
       .from(projects)
       .where(eq(projects.createdBy, userId));
 
-    // Get collaborated projects
     const collaboratedProjects = await db
       .select({ projectId: projectCollaborators.projectId })
       .from(projectCollaborators)
