@@ -2,6 +2,26 @@ import os
 
 WORKSPACE_ROOT = os.getenv("WORKSPACE_ROOT", "/workspaces")
 
+
+def get_available_workspaces() -> list[dict]:
+    """Return list of registered workspace IDs and their root paths (read-only)."""
+    root = WORKSPACE_ROOT
+    if not os.path.isdir(root):
+        return []
+    workspaces = []
+    for name in sorted(os.listdir(root)):
+        full = os.path.join(root, name)
+        if os.path.isdir(full) and not name.startswith("."):
+            workspaces.append({"id": name, "root": full})
+    return workspaces
+
+
+def workspace_list_roots() -> dict:
+    """Tier-0 read-only introspection: returns all registered workspace IDs + root paths."""
+    workspaces = get_available_workspaces()
+    return {"ok": True, "workspaces": workspaces}
+
+
 def _abs(workspace: str, path: str) -> str:
     if "/" in workspace or ".." in workspace:
         raise ValueError("Invalid workspace")
@@ -10,6 +30,7 @@ def _abs(workspace: str, path: str) -> str:
     if not full.startswith(base):
         raise ValueError("Path traversal blocked")
     return full
+
 
 def workspace_list(workspace: str, path: str = "."):
     full = _abs(workspace, path)

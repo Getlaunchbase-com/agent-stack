@@ -58,6 +58,18 @@ TOOLS = [
   {
     "type": "function",
     "function": {
+      "name": "workspace_list_roots",
+      "description": "Return all registered workspace IDs and their root paths. Read-only, no arguments. Use this to discover available workspaces before calling other workspace tools.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "workspace_list",
       "description": "List files/directories under a path in the workspace.",
       "parameters": {
