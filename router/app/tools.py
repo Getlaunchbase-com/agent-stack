@@ -17,6 +17,12 @@ from .browser_tools import (
     browser_screenshot,
     browser_extract_text,
 )
+from .blueprint_tools import (
+    blueprint_extract_text,
+    blueprint_takeoff_low_voltage,
+    artifact_write_xlsx_takeoff,
+    artifact_write_docx_summary,
+)
 
 TOOL_MAP = {
     "request_approval": request_approval,
@@ -33,6 +39,10 @@ TOOL_MAP = {
     "browser_type": browser_type,
     "browser_screenshot": browser_screenshot,
     "browser_extract_text": browser_extract_text,
+    "blueprint_extract_text": blueprint_extract_text,
+    "blueprint_takeoff_low_voltage": blueprint_takeoff_low_voltage,
+    "artifact_write_xlsx_takeoff": artifact_write_xlsx_takeoff,
+    "artifact_write_docx_summary": artifact_write_docx_summary,
 }
 
 # Tools that accept a `workspace` argument and require it to exist on disk.
@@ -48,6 +58,10 @@ _WORKSPACE_TOOLS = {
     "browser_type",
     "browser_screenshot",
     "browser_extract_text",
+    "blueprint_extract_text",
+    "blueprint_takeoff_low_voltage",
+    "artifact_write_xlsx_takeoff",
+    "artifact_write_docx_summary",
 }
 
 
