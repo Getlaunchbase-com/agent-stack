@@ -23,6 +23,11 @@ from datetime import datetime, timezone
 
 import fitz  # PyMuPDF
 
+from .contracts.blueprint.validate_blueprint_parse import (
+    build_contract_block,
+    validate_or_error,
+)
+
 logger = logging.getLogger(__name__)
 
 WORKSPACE_ROOT = os.getenv("WORKSPACE_ROOT", "/workspaces")
@@ -456,9 +461,17 @@ def blueprint_parse_document(
         "total_blocks": total_blocks,
         "total_legend_candidates": total_legend_candidates,
         "dpi": dpi,
+        "contract": build_contract_block(model_version=None),
+        "errors": [],
         "pages": pages_data,
         "artifacts": all_artifacts,
     }
+
+    # Validate against frozen schema before returning
+    validation_error = validate_or_error(result)
+    if validation_error is not None:
+        logger.error("BlueprintParseV1 validation failed: %s", validation_error)
+        return validation_error
 
     # Persist the parse result to disk
     with open(parse_json_path, "w", encoding="utf-8") as f:

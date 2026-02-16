@@ -31,6 +31,10 @@ from .model_registry import (
     get_model,
     list_models,
 )
+from .contracts.blueprint.validate_blueprint_parse import (
+    get_schema_hash,
+    RUNTIME,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -342,6 +346,13 @@ def blueprint_detect_symbols(
             "input_size": model.input_size,
             "threshold_used": effective_threshold,
             "using_heuristic_fallback": using_heuristic,
+        },
+        "producer": {
+            "tool": "blueprint_detect_symbols",
+            "tool_version": "1.1.0",
+            "runtime": RUNTIME,
+            "model_version": model.version,
+            "schema_hash": get_schema_hash(),
         },
         "summary": {
             "total_detections": len(all_detections),

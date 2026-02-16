@@ -1,0 +1,355 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "BlueprintParseV1",
+  "title": "BlueprintParseV1",
+  "description": "Strict, versioned protocol for blueprint document parse output. bbox format: [x1, y1, x2, y2] in points (not normalized). Additive-only evolution: V2 MUST NOT break V1.",
+  "type": "object",
+  "required": [
+    "ok",
+    "schema_version",
+    "parse_id",
+    "generated_at",
+    "pdf_path",
+    "page_count",
+    "total_blocks",
+    "total_legend_candidates",
+    "dpi",
+    "pages",
+    "artifacts",
+    "contract",
+    "errors"
+  ],
+  "properties": {
+    "ok": {
+      "type": "boolean",
+      "const": true
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "BlueprintParseV1"
+    },
+    "parse_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "ISO-8601 timestamp"
+    },
+    "pdf_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "page_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_blocks": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_legend_candidates": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "dpi": {
+      "type": "integer",
+      "minimum": 72,
+      "maximum": 600
+    },
+    "contract": {
+      "$ref": "#/$defs/contract"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/error_entry"
+      }
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/page"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "bbox": {
+      "description": "Bounding box as [x1, y1, x2, y2] in points",
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "contract": {
+      "type": "object",
+      "required": ["name", "version", "schema_hash", "producer"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "const": "BlueprintParseV1"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "schema_hash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "description": "SHA-256 hex digest of the schema file"
+        },
+        "producer": {
+          "$ref": "#/$defs/producer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "producer": {
+      "type": "object",
+      "required": ["tool", "tool_version", "runtime"],
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtime": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_version": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "error_entry": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        },
+        "page": {
+          "type": ["integer", "null"]
+        },
+        "details": {}
+      },
+      "additionalProperties": false
+    },
+    "page": {
+      "type": "object",
+      "required": [
+        "page_number",
+        "width_pt",
+        "height_pt",
+        "width_px",
+        "height_px",
+        "dpi",
+        "png_path",
+        "block_count",
+        "text_blocks",
+        "legend_candidates",
+        "title_block"
+      ],
+      "properties": {
+        "page_number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "width_pt": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height_pt": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "width_px": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height_px": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dpi": {
+          "type": "integer",
+          "minimum": 72
+        },
+        "png_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "block_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text_blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text_block"
+          }
+        },
+        "legend_candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/legend_candidate"
+          }
+        },
+        "title_block": {
+          "$ref": "#/$defs/title_block"
+        }
+      },
+      "additionalProperties": false
+    },
+    "text_block": {
+      "type": "object",
+      "required": ["text", "bbox", "lines", "line_count"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bbox": {
+          "$ref": "#/$defs/bbox"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text_line"
+          }
+        },
+        "line_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "text_line": {
+      "type": "object",
+      "required": ["bbox", "spans"],
+      "properties": {
+        "bbox": {
+          "$ref": "#/$defs/bbox"
+        },
+        "spans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text_span"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "text_span": {
+      "type": "object",
+      "required": ["text", "font", "size", "flags", "color", "bbox"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "font": {
+          "type": "string"
+        },
+        "size": {
+          "type": "number",
+          "minimum": 0
+        },
+        "flags": {
+          "type": "integer"
+        },
+        "color": {
+          "type": "integer"
+        },
+        "bbox": {
+          "$ref": "#/$defs/bbox"
+        }
+      },
+      "additionalProperties": false
+    },
+    "legend_candidate": {
+      "type": "object",
+      "required": ["bbox", "method", "confidence", "matched_text"],
+      "properties": {
+        "bbox": {
+          "$ref": "#/$defs/bbox"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["keyword", "tabular_pattern", "spatial_right"]
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "matched_text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "title_block": {
+      "type": "object",
+      "required": ["bbox", "text", "confidence"],
+      "properties": {
+        "bbox": {
+          "$ref": "#/$defs/bbox"
+        },
+        "text": {
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["type", "path"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["page_png", "debug_overlay", "debug_text_dump", "parse_json"]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
