@@ -58,6 +58,18 @@ TOOLS = [
   {
     "type": "function",
     "function": {
+      "name": "workspace_list_roots",
+      "description": "Return all registered workspace IDs and their root paths. Read-only, no arguments. Use this to discover available workspaces before calling other workspace tools.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "workspace_list",
       "description": "List files/directories under a path in the workspace.",
       "parameters": {
@@ -220,6 +232,90 @@ TOOLS = [
           "selector": {"type": "string", "description": "Optional selector to scope extraction"}
         },
         "required": ["workspace"]
+      }
+    }
+  },
+
+  # ---- blueprint takeoff toolchain ----
+  {
+    "type": "function",
+    "function": {
+      "name": "blueprint_extract_text",
+      "description": "Extract text and layout hints from a blueprint PDF. Returns per-page text blocks with bounding-box positions. First step of the blueprint takeoff pipeline.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "workspace": {"type": "string", "description": "Workspace folder ID"},
+          "pdf_path": {"type": "string", "description": "Relative path to the PDF file inside the workspace"}
+        },
+        "required": ["workspace", "pdf_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "blueprint_takeoff_low_voltage",
+      "description": "Produce a structured low-voltage takeoff from extracted blueprint text. Takes the output of blueprint_extract_text and returns device counts, cable lengths, and per-page breakdown as machine-readable JSON.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "workspace": {"type": "string", "description": "Workspace folder ID"},
+          "extracted_text": {
+            "type": "array",
+            "description": "List of page dicts from blueprint_extract_text (each with 'page', 'text', optionally 'blocks')",
+            "items": {
+              "type": "object",
+              "properties": {
+                "page": {"type": "integer"},
+                "text": {"type": "string"},
+                "blocks": {"type": "array", "items": {"type": "object"}}
+              },
+              "required": ["page", "text"]
+            }
+          },
+          "project_name": {"type": "string", "description": "Optional project name for the report header", "default": ""},
+          "drawing_number": {"type": "string", "description": "Optional drawing/sheet number", "default": ""}
+        },
+        "required": ["workspace", "extracted_text"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "artifact_write_xlsx_takeoff",
+      "description": "Write a structured takeoff JSON to an XLSX spreadsheet artifact. Generates a formatted workbook with summary and per-page detail sheets.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "workspace": {"type": "string", "description": "Workspace folder ID"},
+          "takeoff_json": {
+            "type": "object",
+            "description": "Takeoff dict from blueprint_takeoff_low_voltage"
+          },
+          "output_path": {"type": "string", "description": "Relative path for the XLSX output", "default": "artifacts/takeoff.xlsx"}
+        },
+        "required": ["workspace", "takeoff_json"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "artifact_write_docx_summary",
+      "description": "Write a DOCX summary document from a structured takeoff JSON. Generates a formatted report with device schedule table and page-by-page breakdown.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "workspace": {"type": "string", "description": "Workspace folder ID"},
+          "takeoff_json": {
+            "type": "object",
+            "description": "Takeoff dict from blueprint_takeoff_low_voltage"
+          },
+          "output_path": {"type": "string", "description": "Relative path for the DOCX output", "default": "artifacts/takeoff_summary.docx"}
+        },
+        "required": ["workspace", "takeoff_json"]
       }
     }
   }

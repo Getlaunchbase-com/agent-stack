@@ -4,3 +4,6 @@ pydantic==2.7.4
 python-dotenv==1.0.1
 PyGithub==2.3.0
 requests==2.32.3
+PyMuPDF==1.27.1
+openpyxl==3.1.5
+python-docx==1.2.0
