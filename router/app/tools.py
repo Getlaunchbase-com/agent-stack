@@ -28,6 +28,7 @@ from .vendor_pricing_tools import (
     vendor_price_check,
     vendor_list_sources,
 )
+from .blueprint_parse_tools import blueprint_parse_document
 
 TOOL_MAP = {
     "request_approval": request_approval,
@@ -51,6 +52,7 @@ TOOL_MAP = {
     "vendor_price_search": vendor_price_search,
     "vendor_price_check": vendor_price_check,
     "vendor_list_sources": vendor_list_sources,
+    "blueprint_parse_document": blueprint_parse_document,
 }
 
 # Tools that accept a `workspace` argument and require it to exist on disk.
@@ -70,6 +72,7 @@ _WORKSPACE_TOOLS = {
     "blueprint_takeoff_low_voltage",
     "artifact_write_xlsx_takeoff",
     "artifact_write_docx_summary",
+    "blueprint_parse_document",
 }
 
 

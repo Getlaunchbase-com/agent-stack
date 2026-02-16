@@ -320,6 +320,26 @@ TOOLS = [
     }
   },
 
+  # ---- blueprint parse (forever pipeline) ----
+  {
+    "type": "function",
+    "function": {
+      "name": "blueprint_parse_document",
+      "description": "Parse a blueprint PDF into strict BlueprintParseV1 JSON. Produces page PNGs, text blocks with coordinates, legend region candidates, title block detection, and debug artifacts. First step of the forever blueprint pipeline.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "workspace": {"type": "string", "description": "Workspace folder ID"},
+          "pdf_path": {"type": "string", "description": "Relative path to the PDF file inside the workspace"},
+          "dpi": {"type": "integer", "minimum": 72, "maximum": 600, "default": 150, "description": "Render resolution for page PNGs"},
+          "output_dir": {"type": "string", "default": "artifacts/parse", "description": "Output directory for artifacts (relative to workspace)"},
+          "include_debug": {"type": "boolean", "default": True, "description": "Whether to produce debug overlay PNGs and raw text dump"}
+        },
+        "required": ["workspace", "pdf_path"]
+      }
+    }
+  },
+
   # ---- vendor pricing ----
   {
     "type": "function",
