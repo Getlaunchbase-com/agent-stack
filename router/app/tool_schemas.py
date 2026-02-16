@@ -318,5 +318,70 @@ TOOLS = [
         "required": ["workspace", "takeoff_json"]
       }
     }
+  },
+
+  # ---- vendor pricing ----
+  {
+    "type": "function",
+    "function": {
+      "name": "vendor_price_search",
+      "description": "Search configured vendor sources for pricing and availability of a product. Queries multiple vendors in parallel and returns structured results with confidence scores. Includes rate limiting, retry with backoff, and stable no-result outputs.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Product search term, e.g. 'Cat6A patch cable 10ft blue' or 'Hubbell RJ45 keystone jack'"
+          },
+          "vendors": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["grainger", "graybar", "hdsupply"]},
+            "description": "Optional list of vendor keys to query. Defaults to all configured vendors."
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5,
+            "description": "Maximum number of results to return across all vendors"
+          }
+        },
+        "required": ["query"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "vendor_price_check",
+      "description": "Look up a specific SKU/catalog number at a specific vendor. Returns structured pricing and availability for the exact product.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "vendor": {
+            "type": "string",
+            "enum": ["grainger", "graybar", "hdsupply"],
+            "description": "Vendor key to query"
+          },
+          "sku": {
+            "type": "string",
+            "description": "Product SKU or catalog number to look up"
+          }
+        },
+        "required": ["vendor", "sku"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "vendor_list_sources",
+      "description": "List all configured vendor sources, their display names, and current configuration (rate limits, timeouts). Read-only, no arguments.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
   }
 ]

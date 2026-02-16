@@ -23,6 +23,11 @@ from .blueprint_tools import (
     artifact_write_xlsx_takeoff,
     artifact_write_docx_summary,
 )
+from .vendor_pricing_tools import (
+    vendor_price_search,
+    vendor_price_check,
+    vendor_list_sources,
+)
 
 TOOL_MAP = {
     "request_approval": request_approval,
@@ -43,6 +48,9 @@ TOOL_MAP = {
     "blueprint_takeoff_low_voltage": blueprint_takeoff_low_voltage,
     "artifact_write_xlsx_takeoff": artifact_write_xlsx_takeoff,
     "artifact_write_docx_summary": artifact_write_docx_summary,
+    "vendor_price_search": vendor_price_search,
+    "vendor_price_check": vendor_price_check,
+    "vendor_list_sources": vendor_list_sources,
 }
 
 # Tools that accept a `workspace` argument and require it to exist on disk.
