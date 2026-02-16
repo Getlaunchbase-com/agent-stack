@@ -340,6 +340,40 @@ TOOLS = [
     }
   },
 
+  # ---- blueprint symbol detection ----
+  {
+    "type": "function",
+    "function": {
+      "name": "blueprint_detect_symbols",
+      "description": "Detect blueprint symbols in a PDF using a trainable YOLO-family detector. Outputs detections with bbox + confidence + class + model_version, plus overlay images. Falls back to heuristic detection when trained weights are unavailable.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "workspace": {"type": "string", "description": "Workspace folder ID"},
+          "pdf_path": {"type": "string", "description": "Relative path to the PDF file inside the workspace"},
+          "model_id": {"type": "string", "description": "Model registry ID. Defaults to the active model."},
+          "threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "description": "Override global confidence threshold"},
+          "dpi": {"type": "integer", "minimum": 72, "maximum": 600, "default": 150, "description": "Render DPI for overlay images"},
+          "output_dir": {"type": "string", "default": "artifacts/detections", "description": "Output directory for artifacts"},
+          "include_overlays": {"type": "boolean", "default": True, "description": "Whether to produce overlay PNGs showing detections"}
+        },
+        "required": ["workspace", "pdf_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "blueprint_list_models",
+      "description": "List all registered detection models, their versions, architectures, class lists, and thresholds. Shows the currently active model. Read-only, no arguments.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+
   # ---- vendor pricing ----
   {
     "type": "function",
