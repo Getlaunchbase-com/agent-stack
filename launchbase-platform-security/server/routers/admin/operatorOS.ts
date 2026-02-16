@@ -535,6 +535,7 @@ export const operatorOSRouter = router({
           projectId: agentRuns.projectId,
           goal: agentRuns.goal,
           status: agentRuns.status,
+          model: agentRuns.model,
           createdAt: agentRuns.createdAt,
           finishedAt: agentRuns.finishedAt,
           workspaceName: agentRuns.workspaceName,
