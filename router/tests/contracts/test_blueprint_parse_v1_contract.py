@@ -156,10 +156,12 @@ class TestKnownGoodValidation:
         body = resp.json()
         assert body["ok"] is True
 
-        # Validate independently
+        # Validate independently — strip 'vertex' governance metadata
+        # which is injected post-validation and not part of the schema.
         from router.app.contracts.blueprint.validate_blueprint_parse import (
             validate_parse_output,
         )
+        body.pop("vertex", None)
         errors = validate_parse_output(body)
         assert errors == [], f"Validation errors: {errors}"
 
@@ -198,9 +200,15 @@ class TestKnownGoodValidation:
 
 class TestMalformedValidation:
     def _good_output(self, client, sample_pdf):
-        """Get a known-good output to mutate."""
+        """Get a known-good output to mutate.
+
+        Strips the 'vertex' key which is governance metadata injected
+        post-validation and is not part of the BlueprintParseV1 schema.
+        """
         resp = _call_parse(client, sample_pdf)
-        return resp.json()
+        data = resp.json()
+        data.pop("vertex", None)
+        return data
 
     def test_missing_contract_fails(self, client, sample_pdf):
         from router.app.contracts.blueprint.validate_blueprint_parse import (

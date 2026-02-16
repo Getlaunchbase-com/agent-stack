@@ -30,6 +30,7 @@ from .vendor_pricing_tools import (
 )
 from .blueprint_parse_tools import blueprint_parse_document
 from .blueprint_detect_tools import blueprint_detect_symbols, blueprint_list_models
+from .contracts.governance import stamp_response
 
 TOOL_MAP = {
     "request_approval": request_approval,
@@ -105,7 +106,8 @@ def dispatch_tool_call(name: str, arguments: dict):
     if name in _WORKSPACE_TOOLS:
         _validate_workspace(name, arguments)
     try:
-        return TOOL_MAP[name](**arguments)
+        result = TOOL_MAP[name](**arguments)
+        return stamp_response(result) if isinstance(result, dict) else result
     except HTTPException:
         raise  # re-raise HTTP exceptions so FastAPI handles them
     except Exception as e:

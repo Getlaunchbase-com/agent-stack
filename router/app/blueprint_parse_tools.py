@@ -27,6 +27,7 @@ from .contracts.blueprint.validate_blueprint_parse import (
     build_contract_block,
     validate_or_error,
 )
+from .contracts.governance import get_vertex_stamp
 
 logger = logging.getLogger(__name__)
 
@@ -473,7 +474,7 @@ def blueprint_parse_document(
         logger.error("BlueprintParseV1 validation failed: %s", validation_error)
         return validation_error
 
-    # Persist the parse result to disk
+    # Persist the parse result to disk (schema-valid payload)
     with open(parse_json_path, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
     result["artifacts"].append({
@@ -481,5 +482,9 @@ def blueprint_parse_document(
         "path": os.path.relpath(parse_json_path, _abs(workspace, "")),
         "size_bytes": os.path.getsize(parse_json_path),
     })
+
+    # Vertex stamp — freeze metadata for governance traceability.
+    # Injected AFTER schema validation (schema is frozen, no additionalProperties).
+    result["vertex"] = get_vertex_stamp()
 
     return result

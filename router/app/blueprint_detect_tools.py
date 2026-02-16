@@ -35,6 +35,7 @@ from .contracts.blueprint.validate_blueprint_parse import (
     get_schema_hash,
     RUNTIME,
 )
+from .contracts.governance import get_vertex_stamp
 
 logger = logging.getLogger(__name__)
 
@@ -363,6 +364,9 @@ def blueprint_detect_symbols(
         "page_summaries": page_summaries,
         "artifacts": artifacts,
     }
+
+    # Vertex stamp — freeze metadata for governance traceability
+    result["vertex"] = get_vertex_stamp()
 
     # Persist detection JSON
     result_json_path = os.path.join(out_base, "detection_result.json")

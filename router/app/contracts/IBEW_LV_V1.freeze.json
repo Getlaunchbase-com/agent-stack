@@ -1,0 +1,104 @@
+{
+  "vertex": "IBEW_LV",
+  "version": "1.0.0",
+  "status": "frozen",
+  "frozen_at": "2026-02-15",
+  "frozen_by": "operator",
+  "description": "IBEW Low Voltage Vertex v1 — frozen for deployment. No behavioral, schema, or logic changes allowed. Only additive work behind versioned gates.",
+
+  "contracts": [
+    {
+      "name": "BlueprintParseV1",
+      "version": "1.0.0",
+      "status": "locked",
+      "schema_file": "blueprint/BlueprintParseV1.schema.json",
+      "rules": [
+        "Schema is immutable",
+        "additionalProperties: false enforced at all levels",
+        "Only new versions allowed (V1.1, V2)",
+        "No field removal or type changes"
+      ]
+    },
+    {
+      "name": "EstimateChainV1",
+      "version": "1.0.0",
+      "status": "locked",
+      "rules": [
+        "Labor, waste, and crew assumptions are frozen",
+        "Confidence propagation math is frozen",
+        "Gap detection thresholds are frozen",
+        "Only new versions allowed (V1.1, V2)"
+      ]
+    }
+  ],
+
+  "intelligence": {
+    "status": "locked",
+    "components": [
+      {
+        "name": "symbol_detection_model_registry",
+        "locked_models": [
+          "yolov8n-blueprint-v1",
+          "yolov8s-blueprint-v2",
+          "yolov8m-blueprint-v3"
+        ],
+        "rules": ["Per-class thresholds frozen", "New models allowed as additive registrations only"]
+      },
+      {
+        "name": "ibew_lv_task_library_v1",
+        "rules": ["Labor rates frozen", "Waste factors frozen", "Crew assumptions frozen"]
+      },
+      {
+        "name": "gap_detection_rules",
+        "rules_locked": ["G1", "G2", "G3", "G4", "G5", "G6"],
+        "rules": ["Threshold values frozen", "Rule logic frozen", "New rules allowed as G7+"]
+      },
+      {
+        "name": "confidence_propagation",
+        "rules": ["Math is frozen", "No silent overrides"]
+      }
+    ]
+  },
+
+  "outputs": {
+    "status": "locked",
+    "formats": [
+      {
+        "name": "excel_export",
+        "rules": ["Schema frozen", "Provenance and assumptions included"]
+      },
+      {
+        "name": "bluebeam_csv",
+        "rules": ["Schema frozen", "Provenance and assumptions included"]
+      }
+    ]
+  },
+
+  "prohibited_until_v2": [
+    "Auto-learning of labor rates",
+    "Silent overrides of any frozen value",
+    "Vendor auto-purchasing",
+    "Voice-driven state mutation",
+    "Cross-project inference",
+    "Contract loosening (removing required fields, allowing additionalProperties)"
+  ],
+
+  "allowed_after_freeze": [
+    "Bug fixes (no behavior change)",
+    "Performance improvements",
+    "Logging and observability additions",
+    "UI clarity improvements (no logic changes)",
+    "New vertices (HVAC, Fire, AV)",
+    "Feedback collection",
+    "New contracts (V2 only)"
+  ],
+
+  "governance": {
+    "change_request_types": [
+      "feedback_item",
+      "improvement_proposal",
+      "new_contract_version"
+    ],
+    "rule": "Any change request must become one of the above types. Never a hot patch."
+  }
+}
