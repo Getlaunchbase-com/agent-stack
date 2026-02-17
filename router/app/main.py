@@ -7,6 +7,7 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 from .contracts.contract_handshake import run_handshake, handshake_status
+from .contracts.governance import get_vertex_stamp, get_manifest_hash, verify_schema_integrity
 from .tool_schemas import TOOLS
 from .tools import dispatch_tool_call
 
@@ -44,7 +45,14 @@ class ToolRequest(BaseModel):
 @app.get("/health")
 def health():
     hs = handshake_status()
-    return {"ok": True, "contract_handshake": hs}
+    schema_violations = verify_schema_integrity()
+    return {
+        "status": "ok",
+        "vertex": get_vertex_stamp(),
+        "schema_hash": get_manifest_hash(),
+        "schema_violations": schema_violations,
+        "contract_handshake": hs,
+    }
 
 
 @app.get("/contracts/status")

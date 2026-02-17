@@ -34,9 +34,12 @@ USER_AGENT = os.getenv(
     "VENDOR_USER_AGENT",
     "AgentStack-PricingBot/1.0 (+https://github.com/Getlaunchbase-com/agent-stack)",
 )
-REQUEST_TIMEOUT = int(os.getenv("VENDOR_REQUEST_TIMEOUT", "15"))
+REQUEST_TIMEOUT = int(os.getenv("VENDOR_REQUEST_TIMEOUT", "5"))
 MAX_RETRIES = int(os.getenv("VENDOR_MAX_RETRIES", "3"))
 RATE_LIMIT_RPM = int(os.getenv("VENDOR_RATE_LIMIT_RPM", "30"))
+MAX_LINE_ITEMS = int(os.getenv("VENDOR_MAX_LINE_ITEMS", "500"))
+CIRCUIT_BREAKER_THRESHOLD = int(os.getenv("VENDOR_CIRCUIT_BREAKER_THRESHOLD", "3"))
+CIRCUIT_BREAKER_RESET_SEC = int(os.getenv("VENDOR_CIRCUIT_BREAKER_RESET_SEC", "60"))
 
 WORKSPACE_ROOT = os.getenv("WORKSPACE_ROOT", "/workspaces")
 
@@ -61,6 +64,50 @@ class _RateLimiter:
 
 
 _limiter = _RateLimiter(rpm=RATE_LIMIT_RPM)
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker — per-vendor failure tracking
+# ---------------------------------------------------------------------------
+
+class _CircuitBreaker:
+    """Per-vendor circuit breaker. Opens after consecutive failures, resets after cooldown."""
+
+    def __init__(self, threshold: int = 3, reset_sec: int = 60):
+        self._threshold = threshold
+        self._reset_sec = reset_sec
+        self._failures: dict[str, int] = {}
+        self._opened_at: dict[str, float] = {}
+
+    def is_open(self, vendor: str) -> bool:
+        if self._failures.get(vendor, 0) < self._threshold:
+            return False
+        opened = self._opened_at.get(vendor, 0.0)
+        if time.monotonic() - opened > self._reset_sec:
+            self._failures[vendor] = 0
+            self._opened_at.pop(vendor, None)
+            logger.info("Circuit breaker RESET for vendor '%s'", vendor)
+            return False
+        return True
+
+    def record_failure(self, vendor: str) -> None:
+        self._failures[vendor] = self._failures.get(vendor, 0) + 1
+        if self._failures[vendor] >= self._threshold:
+            self._opened_at[vendor] = time.monotonic()
+            logger.warning(
+                "Circuit breaker OPEN for vendor '%s' after %d consecutive failures",
+                vendor, self._failures[vendor],
+            )
+
+    def record_success(self, vendor: str) -> None:
+        self._failures.pop(vendor, None)
+        self._opened_at.pop(vendor, None)
+
+
+_breaker = _CircuitBreaker(
+    threshold=CIRCUIT_BREAKER_THRESHOLD,
+    reset_sec=CIRCUIT_BREAKER_RESET_SEC,
+)
 
 # ---------------------------------------------------------------------------
 # HTTP session with retry / backoff
@@ -414,20 +461,41 @@ def vendor_price_search(
             "error": f"Unknown vendor(s): {invalid}. Supported: {SUPPORTED_VENDORS}",
         }
 
+    # Hard cap on max_results to prevent runaway responses
+    if max_results > MAX_LINE_ITEMS:
+        return {
+            "ok": False,
+            "error_code": "MAX_LINE_ITEMS_EXCEEDED",
+            "error": (
+                f"max_results ({max_results}) exceeds hard cap ({MAX_LINE_ITEMS}). "
+                "Reduce the request size."
+            ),
+        }
+
     session = _http_session()
     all_results: list[dict] = []
     errors: list[dict] = []
 
     for vendor_key in target_vendors:
+        # Circuit breaker check
+        if _breaker.is_open(vendor_key):
+            logger.warning("Skipping vendor '%s' — circuit breaker is OPEN", vendor_key)
+            errors.append({"vendor": vendor_key, "error": "circuit_breaker_open"})
+            all_results.append(_empty_result(vendor_key, query, reason="circuit_breaker_open"))
+            continue
+
         adapter = _ADAPTERS[vendor_key]
         try:
             hits = adapter.fetch(query, session)
             if hits:
+                _breaker.record_success(vendor_key)
                 all_results.extend(hits)
             else:
+                _breaker.record_success(vendor_key)
                 all_results.append(_empty_result(vendor_key, query))
         except Exception as exc:
             logger.exception("Adapter %s raised unexpectedly", vendor_key)
+            _breaker.record_failure(vendor_key)
             errors.append({"vendor": vendor_key, "error": str(exc)})
             all_results.append(_empty_result(vendor_key, query, reason="adapter_error"))
 
@@ -467,6 +535,15 @@ def vendor_price_check(
         return {"ok": False, "error": "sku must be a non-empty string"}
 
     sku = sku.strip()
+
+    # Circuit breaker check
+    if _breaker.is_open(vendor):
+        return {
+            "ok": False,
+            "error_code": "CIRCUIT_BREAKER_OPEN",
+            "error": f"Vendor '{vendor}' circuit breaker is open — too many consecutive failures",
+        }
+
     session = _http_session()
     adapter = _ADAPTERS[vendor]
 
@@ -474,17 +551,20 @@ def vendor_price_check(
         hits = adapter.fetch(sku, session)
     except Exception as exc:
         logger.exception("vendor_price_check adapter error")
+        _breaker.record_failure(vendor)
         return {
             "ok": True,
             "result": _empty_result(vendor, sku, reason="adapter_error"),
         }
 
     if not hits:
+        _breaker.record_success(vendor)
         return {
             "ok": True,
             "result": _empty_result(vendor, sku),
         }
 
+    _breaker.record_success(vendor)
     # Return best-confidence hit
     best = max(hits, key=lambda r: r.get("confidence", 0))
     return {"ok": True, "result": best}
@@ -512,7 +592,12 @@ def vendor_list_sources() -> dict:
         "ok": True,
         "vendor_count": len(sources),
         "vendors": sources,
-        "rate_limit_rpm": RATE_LIMIT_RPM,
-        "request_timeout_sec": REQUEST_TIMEOUT,
-        "max_retries": MAX_RETRIES,
+        "safeguards": {
+            "rate_limit_rpm": RATE_LIMIT_RPM,
+            "request_timeout_sec": REQUEST_TIMEOUT,
+            "max_retries": MAX_RETRIES,
+            "max_line_items": MAX_LINE_ITEMS,
+            "circuit_breaker_threshold": CIRCUIT_BREAKER_THRESHOLD,
+            "circuit_breaker_reset_sec": CIRCUIT_BREAKER_RESET_SEC,
+        },
     }

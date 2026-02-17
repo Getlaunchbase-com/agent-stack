@@ -1,5 +1,8 @@
+import time
+
 from fastapi import HTTPException
 
+from .audit_log import log_tool_call
 from .approvals import request_approval, check_approval
 from .sandbox_tools import sandbox_run
 from .workspace_tools import (
@@ -30,7 +33,7 @@ from .vendor_pricing_tools import (
 )
 from .blueprint_parse_tools import blueprint_parse_document
 from .blueprint_detect_tools import blueprint_detect_symbols, blueprint_list_models
-from .contracts.governance import stamp_response, get_locked_contracts, is_frozen
+from .contracts.governance import stamp_response, get_locked_contracts, get_vertex_stamp, is_frozen
 from .contracts.contract_handshake import is_handshake_valid, handshake_status
 
 TOOL_MAP = {
@@ -140,16 +143,68 @@ def _validate_workspace(tool_name: str, arguments: dict) -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# Structured error helpers — never expose raw Python tracebacks
+# ---------------------------------------------------------------------------
+
+def _classify_error(exc: Exception) -> str:
+    """Map a Python exception to a structured error code."""
+    name = type(exc).__name__
+    _ERROR_MAP = {
+        "FileNotFoundError": "FILE_NOT_FOUND",
+        "PermissionError": "PERMISSION_DENIED",
+        "TimeoutError": "TIMEOUT",
+        "ValueError": "INVALID_INPUT",
+        "TypeError": "INVALID_INPUT",
+        "KeyError": "MISSING_FIELD",
+        "IndexError": "INDEX_OUT_OF_RANGE",
+        "ConnectionError": "CONNECTION_ERROR",
+        "OSError": "IO_ERROR",
+        "RuntimeError": "RUNTIME_ERROR",
+    }
+    return _ERROR_MAP.get(name, "INTERNAL_ERROR")
+
+
+def _structured_error(tool_name: str, error_code: str, message: str) -> dict:
+    """Build a structured error response — consistent shape, vertex-stamped."""
+    resp: dict = {
+        "ok": False,
+        "error_code": error_code,
+        "message": message,
+        "tool": tool_name,
+    }
+    try:
+        resp["vertex"] = get_vertex_stamp()
+    except Exception:
+        pass  # vertex stamp is best-effort on errors
+    return resp
+
+
 def dispatch_tool_call(name: str, arguments: dict):
     if name not in TOOL_MAP:
-        return {"ok": False, "error": f"Unknown tool: {name}"}
+        return _structured_error(name, "UNKNOWN_TOOL", f"Unknown tool: {name}")
     _enforce_contract_handshake(name)
     if name in _WORKSPACE_TOOLS:
         _validate_workspace(name, arguments)
+
+    t0 = time.monotonic()
     try:
         result = TOOL_MAP[name](**arguments)
-        return stamp_response(result) if isinstance(result, dict) else result
+        duration_ms = (time.monotonic() - t0) * 1000
+        if isinstance(result, dict):
+            result = stamp_response(result)
+        log_tool_call(
+            tool_name=name,
+            ok=result.get("ok", True) if isinstance(result, dict) else True,
+            duration_ms=duration_ms,
+        )
+        return result
     except HTTPException:
-        raise  # re-raise HTTP exceptions so FastAPI handles them
+        duration_ms = (time.monotonic() - t0) * 1000
+        log_tool_call(tool_name=name, ok=False, error_code="HTTP_EXCEPTION", duration_ms=duration_ms)
+        raise
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        duration_ms = (time.monotonic() - t0) * 1000
+        error_code = _classify_error(e)
+        log_tool_call(tool_name=name, ok=False, error_code=error_code, duration_ms=duration_ms)
+        return _structured_error(name, error_code, str(e))
