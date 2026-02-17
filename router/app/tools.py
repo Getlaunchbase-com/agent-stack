@@ -30,7 +30,8 @@ from .vendor_pricing_tools import (
 )
 from .blueprint_parse_tools import blueprint_parse_document
 from .blueprint_detect_tools import blueprint_detect_symbols, blueprint_list_models
-from .contracts.governance import stamp_response
+from .contracts.governance import stamp_response, get_locked_contracts, is_frozen
+from .contracts.contract_handshake import is_handshake_valid, handshake_status
 
 TOOL_MAP = {
     "request_approval": request_approval,
@@ -81,6 +82,45 @@ _WORKSPACE_TOOLS = {
 }
 
 
+# Tools that operate under frozen contracts and require a valid handshake.
+# These will return 503 if the startup handshake with the platform failed.
+_FROZEN_TOOLS = {
+    "blueprint_extract_text",
+    "blueprint_takeoff_low_voltage",
+    "artifact_write_xlsx_takeoff",
+    "artifact_write_docx_summary",
+    "blueprint_parse_document",
+    "blueprint_detect_symbols",
+    "blueprint_list_models",
+    "vendor_price_search",
+    "vendor_price_check",
+    "vendor_list_sources",
+}
+
+
+def _enforce_contract_handshake(tool_name: str) -> None:
+    """Raise HTTP 503 if a frozen tool is called without a valid handshake."""
+    if tool_name not in _FROZEN_TOOLS:
+        return
+    if not is_frozen():
+        return
+    if is_handshake_valid():
+        return
+    status = handshake_status()
+    raise HTTPException(
+        status_code=503,
+        detail={
+            "error": "CONTRACT_MISMATCH",
+            "tool": tool_name,
+            "reason": (
+                "Contract handshake with platform failed or was not performed. "
+                "Frozen tools will not dispatch until contracts are verified."
+            ),
+            "handshake_errors": status["errors"],
+        },
+    )
+
+
 def _validate_workspace(tool_name: str, arguments: dict) -> None:
     """Raise HTTP 422 with structured payload if the workspace does not exist."""
     workspace = arguments.get("workspace")
@@ -103,6 +143,7 @@ def _validate_workspace(tool_name: str, arguments: dict) -> None:
 def dispatch_tool_call(name: str, arguments: dict):
     if name not in TOOL_MAP:
         return {"ok": False, "error": f"Unknown tool: {name}"}
+    _enforce_contract_handshake(name)
     if name in _WORKSPACE_TOOLS:
         _validate_workspace(name, arguments)
     try:

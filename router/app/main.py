@@ -1,13 +1,28 @@
+import logging
 import os
+from contextlib import asynccontextmanager
 from typing import Optional
+
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
+
+from .contracts.contract_handshake import run_handshake, handshake_status
 from .tool_schemas import TOOLS
 from .tools import dispatch_tool_call
 
+logger = logging.getLogger(__name__)
+
 ROUTER_AUTH_TOKEN = os.getenv("ROUTER_AUTH_TOKEN", "")
 
-app = FastAPI(title="Agent Tool Router", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Run contract handshake once at startup."""
+    run_handshake()
+    yield
+
+
+app = FastAPI(title="Agent Tool Router", version="0.1.0", lifespan=lifespan)
 
 
 class ToolCall(BaseModel):
@@ -28,7 +43,13 @@ class ToolRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    hs = handshake_status()
+    return {"ok": True, "contract_handshake": hs}
+
+
+@app.get("/contracts/status")
+def contracts_status():
+    return handshake_status()
 
 
 @app.get("/tools")
