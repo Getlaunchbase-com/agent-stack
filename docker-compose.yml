@@ -5,10 +5,19 @@ services:
     container_name: agent-router
     environment:
       - WORKSPACE_ROOT=${WORKSPACE_ROOT}
+      - ROUTER_AUTH_TOKEN=${ROUTER_AUTH_TOKEN}
+      - PLATFORM_BASE_URL=${PLATFORM_BASE_URL}
+      - PLATFORM_AUTH_TOKEN=${PLATFORM_AUTH_TOKEN}
+      - CONTRACT_HANDSHAKE_TIMEOUT=${CONTRACT_HANDSHAKE_TIMEOUT:-10}
+      - CONTRACT_HANDSHAKE_RETRIES=${CONTRACT_HANDSHAKE_RETRIES:-3}
+      - CONTRACT_HANDSHAKE_FAIL_EXIT=${CONTRACT_HANDSHAKE_FAIL_EXIT:-false}
+      - CONTRACT_HANDSHAKE_CACHE_TTL=${CONTRACT_HANDSHAKE_CACHE_TTL:-60}
+      - AUDIT_LOG_DIR=/logs
     ports:
       - "8080:8080"
     volumes:
       - workspaces:${WORKSPACE_ROOT}
+      - agent-logs:/logs
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker:ro
     depends_on:
@@ -42,3 +51,4 @@ services:
 
 volumes:
   workspaces:
+  agent-logs:

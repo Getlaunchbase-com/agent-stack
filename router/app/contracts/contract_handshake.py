@@ -11,6 +11,7 @@ If any mismatch is detected:
   - There is NO fallback and NO silent accept.
 
 This runs ONCE at startup — not per request.
+The result is cached for HANDSHAKE_CACHE_TTL seconds (default 60).
 """
 
 from __future__ import annotations
@@ -37,24 +38,36 @@ PLATFORM_AUTH_TOKEN = os.getenv("PLATFORM_AUTH_TOKEN", "")
 HANDSHAKE_TIMEOUT = int(os.getenv("CONTRACT_HANDSHAKE_TIMEOUT", "10"))
 HANDSHAKE_MAX_RETRIES = int(os.getenv("CONTRACT_HANDSHAKE_RETRIES", "3"))
 HANDSHAKE_FAIL_EXIT = os.getenv("CONTRACT_HANDSHAKE_FAIL_EXIT", "false").lower() == "true"
+HANDSHAKE_CACHE_TTL = int(os.getenv("CONTRACT_HANDSHAKE_CACHE_TTL", "60"))
 
 # tRPC endpoint path for contract info
 _TRPC_PROCEDURE = "admin.blueprintIngestion.getContractInfo"
 
 # ---------------------------------------------------------------------------
-# Handshake state (module-level singleton)
+# Handshake state (module-level singleton, cached)
 # ---------------------------------------------------------------------------
 
 _handshake_passed: bool | None = None  # None = not yet attempted
 _handshake_errors: list[str] = []
+_handshake_detail: dict = {}  # rich detail for /health
+_handshake_timestamp: float = 0.0  # monotonic time of last handshake
 
 
 def handshake_status() -> dict:
-    """Return the current handshake state for diagnostics."""
-    return {
-        "passed": _handshake_passed,
-        "errors": list(_handshake_errors),
-    }
+    """Return the current handshake state for /health and diagnostics.
+
+    Shape:
+        {
+          "ok": bool,
+          "cached_at_utc": str | None,
+          "cache_ttl_sec": int,
+          "platform_contract": {...} | None,
+          "local_contract": {...},
+          "mismatch_reason": str | None,
+          "errors": [...]
+        }
+    """
+    return dict(_handshake_detail)
 
 
 def is_handshake_valid() -> bool:
@@ -65,6 +78,13 @@ def is_handshake_valid() -> bool:
     platform connection.
     """
     return _handshake_passed is True
+
+
+def is_cache_stale() -> bool:
+    """Return True if the cached handshake result has expired."""
+    if _handshake_timestamp == 0.0:
+        return True
+    return (time.monotonic() - _handshake_timestamp) > HANDSHAKE_CACHE_TTL
 
 
 # ---------------------------------------------------------------------------
@@ -102,27 +122,45 @@ def _fetch_platform_contracts() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Comparison logic
+# Comparison logic — returns structured detail, not just error strings
 # ---------------------------------------------------------------------------
 
-def _compare_contracts(platform_data: dict[str, Any]) -> list[str]:
+def _build_local_summary() -> dict:
+    """Build a summary of local contract state for /health."""
+    manifest = get_manifest()
+    return {
+        "vertex": manifest.get("vertex"),
+        "version": manifest.get("version"),
+        "status": manifest.get("status"),
+        "manifest_hash": get_manifest_hash(),
+        "contracts": [
+            {
+                "name": c["name"],
+                "version": c.get("version"),
+                "status": c.get("status"),
+            }
+            for c in manifest.get("contracts", [])
+        ],
+    }
+
+
+def _compare_contracts(platform_data: dict[str, Any]) -> tuple[list[str], str | None]:
     """Compare platform contract info against local freeze manifest.
 
-    Returns a list of mismatch descriptions (empty = all good).
+    Returns (errors, mismatch_reason) where:
+      - errors: list of individual mismatch descriptions
+      - mismatch_reason: single summary string (None if no mismatch)
     """
     errors: list[str] = []
     manifest = get_manifest()
     local_hash = get_manifest_hash()
 
-    # Platform should return a list of contracts
     platform_contracts: list[dict] = platform_data.get("contracts", [])
     if not platform_contracts:
-        errors.append(
-            "Platform returned no contracts — cannot verify handshake"
-        )
-        return errors
+        reason = "Platform returned no contracts"
+        errors.append(reason)
+        return errors, reason
 
-    # Index local contracts by name
     local_contracts = {c["name"]: c for c in manifest.get("contracts", [])}
 
     for pc in platform_contracts:
@@ -135,21 +173,18 @@ def _compare_contracts(platform_data: dict[str, Any]) -> list[str]:
             )
             continue
 
-        # Version check
         if pc.get("version") != local.get("version"):
             errors.append(
                 f"Contract '{name}' version mismatch: "
                 f"platform={pc.get('version')} local={local.get('version')}"
             )
 
-        # Schema hash check
         if pc.get("schema_hash") and pc["schema_hash"] != local.get("schema_hash"):
             errors.append(
                 f"Contract '{name}' schema_hash mismatch: "
                 f"platform={pc.get('schema_hash')} local={local.get('schema_hash')}"
             )
 
-    # Also check for local contracts the platform doesn't know about
     platform_names = {pc.get("name") for pc in platform_contracts}
     for local_name in local_contracts:
         if local_name not in platform_names:
@@ -157,7 +192,6 @@ def _compare_contracts(platform_data: dict[str, Any]) -> list[str]:
                 f"Local contract '{local_name}' not found on platform"
             )
 
-    # Manifest-level hash comparison (if platform provides one)
     platform_manifest_hash = platform_data.get("manifest_hash")
     if platform_manifest_hash and platform_manifest_hash != local_hash:
         errors.append(
@@ -165,7 +199,49 @@ def _compare_contracts(platform_data: dict[str, Any]) -> list[str]:
             f"platform={platform_manifest_hash} local={local_hash}"
         )
 
-    return errors
+    mismatch_reason = "; ".join(errors) if errors else None
+    return errors, mismatch_reason
+
+
+# ---------------------------------------------------------------------------
+# Detail builder — creates the rich /health payload
+# ---------------------------------------------------------------------------
+
+def _build_detail(
+    *,
+    ok: bool,
+    errors: list[str],
+    mismatch_reason: str | None = None,
+    platform_data: dict[str, Any] | None = None,
+) -> dict:
+    """Build the rich handshake detail dict for /health."""
+    import datetime
+
+    local_summary = _build_local_summary()
+
+    platform_summary = None
+    if platform_data is not None:
+        platform_summary = {
+            "manifest_hash": platform_data.get("manifest_hash"),
+            "contracts": [
+                {
+                    "name": c.get("name"),
+                    "version": c.get("version"),
+                    "schema_hash": c.get("schema_hash"),
+                }
+                for c in platform_data.get("contracts", [])
+            ],
+        }
+
+    return {
+        "ok": ok,
+        "cached_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "cache_ttl_sec": HANDSHAKE_CACHE_TTL,
+        "platform_contract": platform_summary,
+        "local_contract": local_summary,
+        "mismatch_reason": mismatch_reason,
+        "errors": errors,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -185,15 +261,20 @@ def run_handshake() -> bool:
     If CONTRACT_HANDSHAKE_FAIL_EXIT=true, exits the process on failure
     (exit code 78 = EX_CONFIG) to prevent a partially-valid runtime.
     """
-    global _handshake_passed, _handshake_errors
+    global _handshake_passed, _handshake_errors, _handshake_detail, _handshake_timestamp
 
     if not PLATFORM_BASE_URL:
-        _handshake_passed = False
-        _handshake_errors = [
+        err_msg = (
             "PLATFORM_BASE_URL not configured — handshake skipped, "
             "frozen tools will be blocked"
-        ]
-        logger.error("CONTRACT HANDSHAKE FAILED: %s", _handshake_errors[0])
+        )
+        _handshake_passed = False
+        _handshake_errors = [err_msg]
+        _handshake_detail = _build_detail(
+            ok=False, errors=[err_msg], mismatch_reason=err_msg,
+        )
+        _handshake_timestamp = time.monotonic()
+        logger.error("CONTRACT HANDSHAKE FAILED: %s", err_msg)
         _maybe_exit()
         return False
 
@@ -226,21 +307,33 @@ def run_handshake() -> bool:
                 )
 
     if platform_data is None:
-        _handshake_passed = False
-        _handshake_errors = [
+        err_msg = (
             f"Platform unreachable after {HANDSHAKE_MAX_RETRIES} attempts: "
             f"{last_network_error}"
-        ]
-        logger.error("CONTRACT HANDSHAKE FAILED: %s", _handshake_errors[0])
+        )
+        _handshake_passed = False
+        _handshake_errors = [err_msg]
+        _handshake_detail = _build_detail(
+            ok=False, errors=[err_msg], mismatch_reason=err_msg,
+        )
+        _handshake_timestamp = time.monotonic()
+        logger.error("CONTRACT HANDSHAKE FAILED: %s", err_msg)
         _maybe_exit()
         return False
 
     # --- Compare contracts (no retry — mismatch is definitive) ---
-    errors = _compare_contracts(platform_data)
+    errors, mismatch_reason = _compare_contracts(platform_data)
 
     if errors:
         _handshake_passed = False
         _handshake_errors = errors
+        _handshake_detail = _build_detail(
+            ok=False,
+            errors=errors,
+            mismatch_reason=mismatch_reason,
+            platform_data=platform_data,
+        )
+        _handshake_timestamp = time.monotonic()
         for err in errors:
             logger.error("CONTRACT MISMATCH: %s", err)
         logger.error(
@@ -251,6 +344,12 @@ def run_handshake() -> bool:
 
     _handshake_passed = True
     _handshake_errors = []
+    _handshake_detail = _build_detail(
+        ok=True,
+        errors=[],
+        platform_data=platform_data,
+    )
+    _handshake_timestamp = time.monotonic()
     logger.info("CONTRACT HANDSHAKE PASSED — all contracts verified")
     return True
 
