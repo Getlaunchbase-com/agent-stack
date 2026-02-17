@@ -318,5 +318,124 @@ TOOLS = [
         "required": ["workspace", "takeoff_json"]
       }
     }
+  },
+
+  # ---- blueprint parse (forever pipeline) ----
+  {
+    "type": "function",
+    "function": {
+      "name": "blueprint_parse_document",
+      "description": "Parse a blueprint PDF into strict BlueprintParseV1 JSON. Produces page PNGs, text blocks with coordinates, legend region candidates, title block detection, and debug artifacts. First step of the forever blueprint pipeline.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "workspace": {"type": "string", "description": "Workspace folder ID"},
+          "pdf_path": {"type": "string", "description": "Relative path to the PDF file inside the workspace"},
+          "dpi": {"type": "integer", "minimum": 72, "maximum": 600, "default": 150, "description": "Render resolution for page PNGs"},
+          "output_dir": {"type": "string", "default": "artifacts/parse", "description": "Output directory for artifacts (relative to workspace)"},
+          "include_debug": {"type": "boolean", "default": True, "description": "Whether to produce debug overlay PNGs and raw text dump"}
+        },
+        "required": ["workspace", "pdf_path"]
+      }
+    }
+  },
+
+  # ---- blueprint symbol detection ----
+  {
+    "type": "function",
+    "function": {
+      "name": "blueprint_detect_symbols",
+      "description": "Detect blueprint symbols in a PDF using a trainable YOLO-family detector. Outputs detections with bbox + confidence + class + model_version, plus overlay images. Falls back to heuristic detection when trained weights are unavailable.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "workspace": {"type": "string", "description": "Workspace folder ID"},
+          "pdf_path": {"type": "string", "description": "Relative path to the PDF file inside the workspace"},
+          "model_id": {"type": "string", "description": "Model registry ID. Defaults to the active model."},
+          "threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "description": "Override global confidence threshold"},
+          "dpi": {"type": "integer", "minimum": 72, "maximum": 600, "default": 150, "description": "Render DPI for overlay images"},
+          "output_dir": {"type": "string", "default": "artifacts/detections", "description": "Output directory for artifacts"},
+          "include_overlays": {"type": "boolean", "default": True, "description": "Whether to produce overlay PNGs showing detections"}
+        },
+        "required": ["workspace", "pdf_path"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "blueprint_list_models",
+      "description": "List all registered detection models, their versions, architectures, class lists, and thresholds. Shows the currently active model. Read-only, no arguments.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+
+  # ---- vendor pricing ----
+  {
+    "type": "function",
+    "function": {
+      "name": "vendor_price_search",
+      "description": "Search configured vendor sources for pricing and availability of a product. Queries multiple vendors in parallel and returns structured results with confidence scores. Includes rate limiting, retry with backoff, and stable no-result outputs.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Product search term, e.g. 'Cat6A patch cable 10ft blue' or 'Hubbell RJ45 keystone jack'"
+          },
+          "vendors": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["grainger", "graybar", "hdsupply"]},
+            "description": "Optional list of vendor keys to query. Defaults to all configured vendors."
+          },
+          "max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5,
+            "description": "Maximum number of results to return across all vendors"
+          }
+        },
+        "required": ["query"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "vendor_price_check",
+      "description": "Look up a specific SKU/catalog number at a specific vendor. Returns structured pricing and availability for the exact product.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "vendor": {
+            "type": "string",
+            "enum": ["grainger", "graybar", "hdsupply"],
+            "description": "Vendor key to query"
+          },
+          "sku": {
+            "type": "string",
+            "description": "Product SKU or catalog number to look up"
+          }
+        },
+        "required": ["vendor", "sku"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "vendor_list_sources",
+      "description": "List all configured vendor sources, their display names, and current configuration (rate limits, timeouts). Read-only, no arguments.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
   }
 ]
